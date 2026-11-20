@@ -1,82 +1,210 @@
-# 🗄️ Automated SQL Server Database Backup Service
+# 🗄️ Database Backup Service — C# Windows Service
 
-**Automated Database Backup Service** is a reliable background Windows Service designed to automate full **Microsoft SQL Server** database backups at customizable time intervals[span_1](start_span)[span_1](end_span). Built using **C# (.NET Framework)** and **T-SQL**, the system operates silently via the Service Control Manager (SCM), manages service dependencies (like SQL Server startup), provides dual execution modes for seamless testing, and maintains detailed operational log files[span_2](start_span)[span_2](end_span).
+![Language](https://img.shields.io/badge/language-C%23-blue)
+![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![Database](https://img.shields.io/badge/database-SQL%20Server-red)
+![Type](https://img.shields.io/badge/type-Windows%20Service-green)
 
----
+A Windows Service written in C# that **automatically backs up a SQL Server database at a fixed interval**. Each run produces a timestamped `.bak` file and writes the result to a log file.
 
-## 🌟 Key Features
+It is a compact reference for:
 
-### ⏱️ Automated & Scheduled Backups
-* **Dynamic Interval Execution:** Automatically triggers full SQL Server database backups based on configurable time intervals (in minutes)[span_3](start_span)[span_3](end_span).
-* **Timestamped Output Files:** Generates dynamic backup files tagged with execution date and time (e.g., `Backup_20260814_143000.bak`)[span_4](start_span)[span_4](end_span).
-
-### 🔄 Dual Execution Modes
-* **Background Windows Service:** Runs silently in the background managed by Windows Service Control Manager (SCM) with `LocalService` identity[span_5](start_span)[span_5](end_span).
-* **Interactive Console Mode:** Supports immediate execution via `Environment.UserInteractive` for rapid debugging, live monitoring, and testing[span_6](start_span)[span_6](end_span).
-
-### 📝 Robust Logging & Fallbacks
-* **Operational Auditing:** Writes step-by-step service logs (`ServiceLog.txt`) capturing start/stop events, backup statuses, and errors[span_7](start_span)[span_7](end_span).
-* **Automatic Directory Provisioning:** Checks and automatically creates required backup and log directories on startup if they do not exist[span_8](start_span)[span_8](end_span).
-* **Default Configuration Fallbacks:** Features fallback safety values for missing or incomplete configuration settings[span_9](start_span)[span_9](end_span).
-
-### ⚙️ System Dependencies & Reliability
-* **Service Dependency Mapping:** Explicitly configured to depend on core services (`MSSQLSERVER`, `RpcSs`, `EventLog`) to guarantee SQL Server is active before backups begin[span_10](start_span)[span_10](end_span).
+- Building a Windows Service with `ServiceBase`
+- Scheduling recurring work with `System.Threading.Timer`
+- Running T-SQL `BACKUP DATABASE` from C# with `SqlCommand`
+- Reading settings from `App.config`
+- Installing a service with `ProjInstaller` and `installutil`
+- Running the same code as a console app for debugging
 
 ---
 
-## 🛠️ Tech Stack & Architecture
+## ✨ Features
 
-* **Language:** C#[span_11](start_span)[span_11](end_span)
-* **Framework:** .NET Framework (`System.ServiceProcess`, `System.Configuration.Install`)[span_12](start_span)[span_12](end_span)
-* **Database Engine:** Microsoft SQL Server (`System.Data.SqlClient`, T-SQL `BACKUP DATABASE`)[span_13](start_span)[span_13](end_span)
-* **Core Mechanisms:** Multithreading Timer (`System.Threading.Timer`), `System.IO`[span_14](start_span)[span_14](end_span)
-
----
-
-## ⚙️ Configuration (App.config)
-
-The service settings are completely decoupled from code and can be modified via the `App.config` file without needing to rebuild binaries[span_15](start_span)[span_15](end_span):
-
-<appSettings>
-  <add key="ConnectionString" value="Server=YOUR_SERVER;Database=YOUR_DATABASE;Integrated Security=True;" />
-  <add key="BackupFolder" value="F:\DatabaseBackups" />
-  <add key="LogFolder" value="F:\DatabaseBackups\Logs" />
-  <add key="BackupIntervalMinutes" value="60" />
-</appSettings>
+- Automatic backups every **N minutes** (configurable)
+- First backup runs immediately when the service starts
+- Timestamped backup files: `Backup_yyyyMMdd_HHmmss.bak`
+- Database name is taken from the connection string, so no hard-coded name
+- Timestamped logging to `ServiceLog.txt`
+- Configuration through `App.config`, with defaults when values are missing
+- Creates the backup and log folders automatically
+- Runs as a Windows Service (automatic start) or as a console app
+- Errors are caught and logged, so one failed backup never stops the service
 
 ---
 
-## 🚀 How to Run & Install
+## 🧱 How It Works
 
-### Prerequisites
-* **Visual Studio** (2019 / 2022 / 2026) with .NET Desktop Development workload.
-* **Microsoft SQL Server** & **SQL Server Management Studio (SSMS)**.
+```
+Timer (every N minutes) ──► open SQL connection ──► BACKUP DATABASE ... TO DISK ──► .bak file
+                                                                         │
+                                                                         └──► ServiceLog.txt
+```
 
----
-
-### Option 1: Running in Debug / Console Mode
-Simply build and run the executable (`DatabaseBackupService.exe`) directly[span_16](start_span)[span_16](end_span). The application automatically detects the interactive session and launches a console interface for real-time output and debugging[span_17](start_span)[span_17](end_span).
-
----
-
-### Option 2: Installing as a Native Windows Service
-
-1. **Open Developer Command Prompt for Visual Studio** as **Administrator**.
-2. **Navigate to the output build directory** containing `DatabaseBackupService.exe`.
-3. **Register the Service:**
-   InstallUtil.exe DatabaseBackupService.exe
-4. **Manage Service:**
-   * Open `services.msc` on your machine.
-   * Locate **Automated Database Backup Service**[span_18](start_span)[span_18](end_span).
-   * Start or set startup type to **Automatic**[span_19](start_span)[span_19](end_span).
-
-5. **Uninstall Service:**
-   InstallUtil.exe /u DatabaseBackupService.exe
+1. `OnStart` creates a `Timer` that fires immediately and then every `BackupIntervalMinutes`.
+2. `BackUpDatabase` builds a file name from the current date and time.
+3. It connects to SQL Server and runs:
+   ```sql
+   BACKUP DATABASE [YourDb] TO DISK = 'path\Backup_20261120_031500.bak' WITH INIT
+   ```
+4. Success or failure is written to the log.
+5. `OnStop` disposes the timer.
 
 ---
 
-## 👨‍💻 Author
+## 📁 Project Structure
 
-**Muhammad Sadaka**  
-* GitHub: [@Muhammad-sadaka](https://github.com/Muhammad-sadaka)
+```
+DatabaseBackupService/
+├── DatabaseBackupService.cs   # Service logic (timer, backup, log)
+├── ProjInstaller.cs           # Service installer configuration
+├── Program.cs                 # Entry point
+├── App.config                 # Settings
+└── README.md
+```
 
+---
+
+## ⚙️ Configuration
+
+Edit `App.config`:
+
+```xml
+<configuration>
+  <appSettings>
+    <add key="ConnectionString" value="Server=.;Database=MyDb;Integrated Security=True;" />
+    <add key="BackupFolder" value="F:\DatabaseBackups" />
+    <add key="LogFolder" value="F:\DatabaseBackups\Logs" />
+    <add key="BackupIntervalMinutes" value="60" />
+  </appSettings>
+</configuration>
+```
+
+| Key                     | Description                              | Default                       |
+|-------------------------|------------------------------------------|-------------------------------|
+| `ConnectionString`      | SQL Server connection (includes the database name) | none (required)     |
+| `BackupFolder`          | Where `.bak` files are saved             | `F:\DatabaseBackups`          |
+| `LogFolder`             | Where `ServiceLog.txt` is written        | `F:\DatabaseBackups\Logs`     |
+| `BackupIntervalMinutes` | Minutes between backups                  | `60`                          |
+
+---
+
+## 🚀 Getting Started
+
+### Requirements
+- Windows
+- .NET Framework 4.x
+- SQL Server (any edition that supports `BACKUP DATABASE`)
+- Visual Studio 2019+ (to build)
+- Administrator rights (to install the service)
+
+### 1. Clone and build
+```bash
+git clone https://github.com/<your-username>/<your-repo>.git
+```
+Open the solution in Visual Studio and build in **Release** mode.
+
+### 2. Test in console mode (recommended first)
+Run the project from Visual Studio. In interactive mode the service runs in the console and prints log messages. Press **Enter** to stop it.
+
+### 3. Install the service
+Open **Developer Command Prompt for VS as Administrator**:
+
+```bash
+installutil DatabaseBackupService.exe
+```
+
+### 4. Start the service
+```bash
+net start DatabaseBackupService
+```
+
+### 5. Stop and uninstall
+```bash
+net stop DatabaseBackupService
+installutil /u DatabaseBackupService.exe
+```
+
+### Service settings
+| Setting      | Value                                   |
+|--------------|-----------------------------------------|
+| Service name | `DatabaseBackupService`                 |
+| Display name | Automated Database Backup Service       |
+| Start type   | Automatic                               |
+| Account      | `LocalService`                          |
+| Depends on   | `RpcSs`, `EventLog`, `MSSQLSERVER`      |
+
+---
+
+## 🔑 Important: Permissions
+
+Two different accounts are involved, and both must have access:
+
+1. **The service account** (`LocalService` by default) must be able to **write the log folder** and **connect to SQL Server**. With `Integrated Security=True`, `LocalService` usually has no SQL login, so either grant it one, run the service under another account, or use SQL authentication in the connection string.
+2. **The SQL Server service account** is the one that actually **writes the `.bak` file**. The `BackupFolder` must be writable by that account, not only by the Windows service.
+
+Most "backup failed" errors come from one of these two.
+
+> **SQL Server instance name:** the installer depends on `MSSQLSERVER`, which is the **default instance** only. For a named instance, change it to `MSSQL$InstanceName` in `ProjInstaller.cs`.
+
+---
+
+## 🧪 Quick Test
+
+1. Start the service (or run in console mode).
+2. A `.bak` file appears in the backup folder immediately.
+3. Check `ServiceLog.txt`:
+
+```
+[2026-11-20 03:15:00] Backup schedule initiated: every 60 minute(s).
+[2026-11-20 03:15:02] Database backup successful: F:\DatabaseBackups\Backup_20261120_031500.bak
+```
+
+---
+
+## ⚠️ Known Limitations
+
+- No retention policy: old backups are never deleted, so the folder grows forever
+- If a backup takes longer than the interval, two backups can overlap
+- The backup path is inserted directly into the SQL text (safe for normal paths, but a path containing `'` will break the command)
+- Full backups only (no differential or transaction log backups)
+- No backup verification (`CHECKSUM`, `RESTORE VERIFYONLY`) or compression
+- The connection string is stored in plain text in `App.config`
+- `OnStop` does not wait for a running backup to finish
+- Log writes are not synchronized
+- A missing `BackupIntervalMinutes` key is read as `0`, which makes the timer fire only once (see the roadmap item below)
+
+## 🗺️ Roadmap
+
+- [ ] Validate the interval (use the default when the value is missing or ≤ 0)
+- [ ] Automatic cleanup of backups older than N days
+- [ ] Prevent overlapping backups
+- [ ] Differential and log backups
+- [ ] `WITH CHECKSUM, COMPRESSION` and restore verification
+- [ ] Encrypt the connection string section
+- [ ] Email or Event Log alerts on failure
+- [ ] Thread-safe logging
+- [ ] Unit tests
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a branch: `git checkout -b feature/your-feature`
+3. Commit your changes: `git commit -m "Add your feature"`
+4. Push: `git push origin feature/your-feature`
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+Released under the [MIT License](LICENSE).
+
+## 👤 Author
+
+**Muhammad** — Junior Software Developer, Damascus, Syria
+
+- GitHub: [@Muhammad-sadaka](https://github.com/Muhammad-sadaka)
+
+If this project helped you learn, please give it a ⭐
